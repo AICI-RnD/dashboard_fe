@@ -11,9 +11,9 @@ export interface TimeResponse {
   period: Period
   start_date: string
   end_date: string
-  avg_response_time_ms?: number
-  avg_completion_time_ms?: number
-  avg_customer_response_time_ms?: number
+  avg_response_time?: number
+  avg_completion_time?: number
+  avg_customer_response_time?: number
 }
 
 export interface AutomationRateResponse {

@@ -23,11 +23,15 @@ const SESSION_API_ENDPOINT = `${API_BASE_URL}/session`
 export async function getCustomerChatHistory(sessionId: string | number): Promise<ChatMessage[]> {
   // Đảm bảo URL đúng dựa trên router backend
   const url = `${SESSION_API_ENDPOINT}/${sessionId}/chat-histories`
-  // Sử dụng fetchCustomerAPI hoặc một hàm fetch tương tự nếu cần thiết
-  // Ở đây giả sử fetchCustomerAPI có thể dùng chung
   try {
     console.log(`[v0] Fetching chat history for session ${sessionId}: ${url}`)
-    const response = await fetch(url);
+    const response = await fetch(url, {
+        headers: {
+          "ngrok-skip-browser-warning": "true",
+          "Accept": "application/json"
+        }
+      }
+    );
 
     if (!response.ok) {
         const contentType = response.headers.get("content-type");
@@ -36,6 +40,8 @@ export async function getCustomerChatHistory(sessionId: string | number): Promis
         console.error("[v0]", errorMessage);
         throw new Error(`Failed to fetch chat history: ${response.statusText}`);
     }
+
+    console.log(response.body);
 
     const data: ChatHistoryResponse = await response.json();
     console.log(`[v0] Chat history received for session ${sessionId}:`, data);
@@ -149,17 +155,17 @@ export async function getNewAppointments(period: Period): Promise<number> {
 
 export async function getAgentAvgResponseTime(period: Period): Promise<number> {
   const data = await fetchAPI<TimeResponse>("dashboard", "/agent-avg-response-time", period)
-  return data.avg_response_time_ms || 0
+  return data.avg_response_time || 0
 }
 
 export async function getAppointmentAvgCompletionTime(period: Period): Promise<number> {
   const data = await fetchAPI<TimeResponse>("dashboard", "/appointment-avg-completion-time", period)
-  return data.avg_completion_time_ms || 0
+  return data.avg_completion_time || 0
 }
 
 export async function getCustomerAvgResponseTime(period: Period): Promise<number> {
   const data = await fetchAPI<TimeResponse>("dashboard", "/customer-avg-response-time", period)
-  return data.avg_customer_response_time_ms || 0
+  return data.avg_customer_response_time || 0
 }
 
 export async function getAvgAutomationRate(period: Period): Promise<number> {
@@ -194,9 +200,9 @@ export async function getCustomerAvgCompletionTime(customerId: number, period: P
 }
 
 export async function getCustomerAvgResponseTimeInCustomer(customerId: number, period: Period): Promise<number> {
-  const endpoint = `/${customerId}/appointment-completion-avg-time`;
+  const endpoint = `/${customerId}/customer-avg-response-time`;
   const data = await fetchAPI<TimeResponse>("customer", endpoint, period)
-  return data.avg_customer_response_time_ms || 0
+  return data.avg_customer_response_time || 0
 }
 
 export async function getCustomerAgentAvgResponseTime(customerId: number, period: Period): Promise<number> {

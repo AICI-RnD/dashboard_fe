@@ -309,10 +309,10 @@ export default function CustomerDetail({ customer, onBack }: CustomerDetailProps
            {/* Card chỉ số */}
            {[
                { title: "Số đơn hoàn thành", value: appointmentCount, unit: "đơn", icon: ShoppingCart, color: "orange", loading: loadingStates.metrics },
-               { title: "TG hoàn thành đơn", value: avgCompletionTime, unit: "giây", icon: Clock, color: "purple", loading: loadingStates.metrics },
-               { title: "TG Agent P.Hồi", value: avgAgentResponseTime, unit: "giây", icon: Zap, color: "green", loading: loadingStates.metrics },
-               { title: "TG Khách P.Hồi", value: avgCustomerResponseTime, unit: "giây", icon: MessageSquare, color: "blue", loading: loadingStates.metrics },
-               { title: "Tỉ lệ tự động", value: avgAutomationRate, unit: "%", icon: RotateCcw, color: "indigo", loading: loadingStates.metrics },
+               { title: "TB TG hoàn thành đơn", value: avgCompletionTime, unit: "giây", icon: Clock, color: "purple", loading: loadingStates.metrics },
+               { title: "TB TG Agent P.Hồi", value: avgAgentResponseTime, unit: "giây", icon: Zap, color: "green", loading: loadingStates.metrics },
+               { title: "TB TG Khách P.Hồi", value: avgCustomerResponseTime, unit: "giây", icon: MessageSquare, color: "blue", loading: loadingStates.metrics },
+               { title: "TB Tỉ lệ tự động", value: avgAutomationRate, unit: "%", icon: RotateCcw, color: "indigo", loading: loadingStates.metrics },
            ].map((metric) => (
              <Card key={metric.title} className={`shadow-sm border-l-4 border-${metric.color}-500 bg-${metric.color}-50 dark:bg-${metric.color}-950/50`}>
                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
