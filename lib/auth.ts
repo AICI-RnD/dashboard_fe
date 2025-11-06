@@ -27,6 +27,7 @@ export async function login(username: string, password: string): Promise<LoginRe
     const response = await fetch(LOGIN_API_ENDPOINT, {
       method: 'POST',
       headers: {
+        "ngrok-skip-browser-warning": "true",
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: formData.toString(),
@@ -99,6 +100,7 @@ export async function resetPassword(
     const response = await fetch(RESET_PASS_API_ENDPOINT, {
       method: 'POST',
       headers: {
+        "ngrok-skip-browser-warning": "true",
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ 
