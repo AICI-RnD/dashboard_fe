@@ -1,15 +1,17 @@
 "use client"
 
+import { AlertTriangle } from "lucide-react"
 import React from "react";
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
-  Clock, MessageSquare, ShoppingCart, Users, Zap, TrendingUp, RotateCcw, LayoutDashboard, AlertCircle, BarChart3, Filter
-} from "lucide-react" // Thêm icon BarChart3, Filter
+  Clock, MessageSquare, ShoppingCart, Users, Zap, TrendingUp, RotateCcw, LayoutDashboard, AlertCircle, BarChart3, Filter, LogOut
+} from "lucide-react"
+import dynamic from 'next/dynamic'
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip" // Thêm Tooltip
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { Period } from "@/lib/types"
 import type { DashboardData, Customer } from "@/lib/types"
 import {
@@ -23,7 +25,9 @@ import {
   getAllCustomers,
 } from "@/lib/api"
 import CustomerList from "@/components/customer-list"
-import { cn } from "@/lib/utils" // Import cn utility
+import { cn } from "@/lib/utils"
+import { logout, getCurrentUser, isAuthenticated } from "@/lib/auth"
+import { useRouter } from "next/navigation"
 
 type TimeFormat = "hour" | "day" | "month" | "year"
 
@@ -33,9 +37,9 @@ interface MetricDisplayProps {
   unit: string
   icon: React.ReactElement<{ className?: string }>
   loading: boolean
-  tooltipText?: string // Thêm tooltip giải thích
+  tooltipText?: string
   colorClass?: string
-  trend?: "up" | "down" | "neutral" // Thêm thông tin xu hướng (ví dụ)
+  trend?: "up" | "down" | "neutral"
 }
 
 // === Metric Card Component ===
@@ -52,7 +56,7 @@ const MetricCard: React.FC<MetricDisplayProps> = ({ title, value, unit, icon, lo
       "border-purple-500": colorClass?.includes("purple"),
       "border-pink-500": colorClass?.includes("pink"),
       "border-cyan-500": colorClass?.includes("cyan"),
-      "border-border": !colorClass || colorClass === "bg-card" // Default border
+      "border-border": !colorClass || colorClass === "bg-card"
     })}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
@@ -72,18 +76,12 @@ const MetricCard: React.FC<MetricDisplayProps> = ({ title, value, unit, icon, lo
               {value}
               <span className="text-xs font-medium text-muted-foreground">{unit}</span>
             </div>
-            {/* <p className={`text-xs ${trendColor} flex items-center gap-1 mt-1`}>
-              {trendIcon && <span>{trendIcon}</span>}
-              {trend !== "neutral" && <span>5.2%</span>} {}
-              <span className="text-muted-foreground">{trend !== "neutral" ? "so với kỳ trước" : ""}</span>
-            </p> */}
           </>
         )}
       </CardContent>
     </Card>
   );
 
-  // Chỉ thêm Tooltip nếu có tooltipText
   if (tooltipText) {
     return (
       <TooltipProvider delayDuration={100}>
@@ -109,7 +107,10 @@ interface DashboardState extends DashboardData {
 
 // === Main Dashboard Component ===
 export default function Dashboard() {
+  const router = useRouter()
+  const [sessionExpired, setSessionExpired] = useState(false)
   const [timeFormat, setTimeFormat] = useState<TimeFormat>("day")
+  const [user, setUser] = useState<any>(null)
   const [data, setData] = useState<DashboardState>({
     automationRate: 0, 
     customerResponseTime: 0,
@@ -124,6 +125,42 @@ export default function Dashboard() {
     customersLoading: true, 
     customersError: null,
   })
+
+  // Check authentication - only on initial mount
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      router.push('/login')
+      return
+    }
+    const currentUser = getCurrentUser()
+    setUser(currentUser)
+  }, [router])
+
+  // Prevent redirect when session expires during use
+  useEffect(() => {
+    if (sessionExpired) {
+      // Don't auto-redirect, show the warning screen
+      return
+    }
+  }, [sessionExpired])
+
+  // Helper function to check for 401 errors
+  const handleApiError = (error: any, errorType: string) => {
+    console.error(`Failed to fetch ${errorType}:`, error)
+    
+    // Check for 401 status code in various error formats
+    const is401 = error?.response?.status === 401 || 
+                  error?.status === 401 || 
+                  error?.statusCode === 401 ||
+                  (error?.message && error.message.includes('401'))
+    
+    if (is401) {
+      // Set session expired but DON'T call logout() to prevent immediate redirect
+      setSessionExpired(true)
+    }
+    
+    return error instanceof Error ? error.message : `Failed to load ${errorType}`
+  }
 
   // --- Data Fetching Effect ---
   useEffect(() => {
@@ -168,34 +205,43 @@ export default function Dashboard() {
           error: null, 
         }));
         
-      } catch (metricsError) {
-        console.error("Failed to fetch dashboard metrics:", metricsError)
+      } catch (metricsError: any) {
+        const errorMessage = handleApiError(metricsError, "dashboard metrics")
+        
         setData(prev => ({
           ...prev, 
           loading: false,
-          error: metricsError instanceof Error ? metricsError.message : "Failed to load dashboard metrics",
+          error: errorMessage,
         }));
       }
 
-      try {
-        const customers = await customersPromise;
-        setData(prev => ({ 
-          ...prev, 
-          customers, 
-          customersLoading: false, 
-          customersError: null 
-      }));
+      // Only fetch customers if session hasn't expired
+      if (!sessionExpired) {
+        try {
+          const customers = await customersPromise;
+          setData(prev => ({ 
+            ...prev, 
+            customers, 
+            customersLoading: false, 
+            customersError: null 
+          }));
 
-      } catch (customerError) {
-        console.error("Failed to fetch customers:", customerError);
-        setData(prev => ({
-          ...prev, customersLoading: false,
-          customersError: customerError instanceof Error ? customerError.message : "Failed to load customers"
-        }));
+        } catch (customerError: any) {
+          const errorMessage = handleApiError(customerError, "customers")
+          
+          setData(prev => ({
+            ...prev, 
+            customersLoading: false,
+            customersError: errorMessage
+          }));
+        }
       }
     }
-    fetchAllData()
-  }, [timeFormat])
+    
+    if (!sessionExpired) {
+      fetchAllData()
+    }
+  }, [timeFormat, sessionExpired])
 
   // --- Helper Functions ---
   const formatTimeUnit = (unit: number): string => {
@@ -214,6 +260,18 @@ export default function Dashboard() {
     hour: "giờ qua", day: "hôm nay", month: "tháng này", year: "năm nay",
   }[timeFormat]);
 
+  // Handle logout
+  const handleLogout = () => {
+    logout()
+    router.push('/login')
+  }
+
+  // Handle re-login from session expired screen
+  const handleReLogin = () => {
+    setSessionExpired(false)
+    router.push('/login')
+  }
+
   // --- Metrics Configuration ---
   const metricsConfig: MetricDisplayProps[] = [
     { title: `Tỉ lệ tự động (${getTimeUnitLabel()})`, value: formatPercentage(data.automationRate), unit: "%", icon: <RotateCcw />, tooltipText: "Tỉ lệ phần trăm các phản hồi được xử lý tự động bởi bot.", colorClass: "bg-indigo-50 dark:bg-indigo-950/50", loading: data.loading },
@@ -223,10 +281,47 @@ export default function Dashboard() {
     { title: `TG TB Hoàn thành đơn (${getTimeUnitLabel()})`, value: formatTimeUnit(data.orderCompletionTime), unit: "giây", icon: <Clock />, tooltipText: "Thời gian trung bình từ khi bắt đầu phiên chat đến khi đơn hàng được tạo.", colorClass: "bg-purple-50 dark:bg-purple-950/50", loading: data.loading },
     { title: `Khách quay lại (${getTimeUnitLabel()})`, value: formatCount(data.returningCustomers), unit: "khách", icon: <TrendingUp />, tooltipText: "Số lượng khách hàng đã tương tác trước đây quay lại trong kỳ.", colorClass: "bg-pink-50 dark:bg-pink-950/50", loading: data.loading },
     { title: `Khách hàng mới (${getTimeUnitLabel()})`, value: formatCount(data.newCustomers), unit: "khách", icon: <Users />, tooltipText: "Số lượng khách hàng tương tác lần đầu trong kỳ.", colorClass: "bg-cyan-50 dark:bg-cyan-950/50", loading: data.loading },
-    // Thêm một card trống nếu cần để đủ dòng (ví dụ khi có 7 metrics)
-    // Hoặc bạn có thể thêm một chỉ số khác nếu có
-     { title: `Trống (${getTimeUnitLabel()})`, value: "-", unit: "%", icon: <BarChart3 />, tooltipText: "Tỷ lệ khách hàng tạo đơn hàng trên tổng số khách tương tác (dữ liệu ví dụ).", colorClass: "bg-teal-50 dark:bg-teal-950/50", loading: data.loading },
+    { title: `Trống (${getTimeUnitLabel()})`, value: "-", unit: "%", icon: <BarChart3 />, tooltipText: "Tỷ lệ khách hàng tạo đơn hàng trên tổng số khách tương tác (dữ liệu ví dụ).", colorClass: "bg-teal-50 dark:bg-teal-950/50", loading: data.loading },
   ];
+
+  // Session Expired Screen
+  if (sessionExpired) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50 dark:from-gray-900 dark:to-indigo-950 p-4">
+        <Card className="p-8 max-w-md w-full text-center shadow-lg border-2 border-red-200 dark:border-red-800">
+          <div className="mb-6 flex justify-center">
+            <div className="bg-red-100 dark:bg-red-900/30 p-4 rounded-full">
+              <AlertTriangle className="h-12 w-12 text-red-600 dark:text-red-400" />
+            </div>
+          </div>
+          
+          <Alert variant="destructive" className="mb-6">
+            <AlertTriangle className="h-5 w-5" />
+            <AlertTitle className="text-lg font-semibold">Phiên đăng nhập đã hết hạn</AlertTitle>
+            <AlertDescription className="mt-2">
+              Phiên làm việc của bạn đã hết hạn hoặc không còn hợp lệ. 
+              Vui lòng đăng nhập lại để tiếp tục sử dụng hệ thống.
+            </AlertDescription>
+          </Alert>
+          
+          <div className="space-y-3">
+            <Button 
+              onClick={handleReLogin} 
+              variant="default" 
+              className="w-full"
+              size="lg"
+            >
+              Đăng nhập lại
+            </Button>
+            
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Nếu vấn đề vẫn tiếp diễn, vui lòng liên hệ quản trị viên.
+            </p>
+          </div>
+        </Card>
+      </div>
+    )
+  }
 
   // --- Render JSX ---
   return (
@@ -247,26 +342,48 @@ export default function Dashboard() {
               Tổng quan hiệu suất hệ thống AnVie Spa ({getTimeUnitLabel()}).
             </p>
           </div>
-          {/* Time Filter Buttons */}
-          <div className="flex items-center gap-2 bg-white dark:bg-gray-800 p-1 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-             <Filter className="h-4 w-4 text-gray-500 dark:text-gray-400 ml-1" />
-             {(["hour", "day", "month", "year"] as TimeFormat[]).map((format) => (
-              <Button
-                key={format}
-                variant={timeFormat === format ? "secondary" : "ghost"} // "secondary" cho nút được chọn
-                size="sm"
-                onClick={() => setTimeFormat(format)}
-                className={cn("capitalize min-w-[55px] transition-all duration-200", {
-                  "text-primary font-semibold": timeFormat === format
-                })}
-                disabled={data.loading || data.customersLoading}
-              >
-                {format === "hour" && "Giờ"}
-                {format === "day" && "Ngày"}
-                {format === "month" && "Tháng"}
-                {format === "year" && "Năm"}
-              </Button>
-            ))}
+          
+          {/* Right side: Time Filter + User Info + Logout */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* User Info */}
+            {user && (
+              <div className="text-sm text-gray-600 dark:text-gray-400 hidden sm:block">
+                Xin chào, <span className="font-semibold">{user.username}</span>
+              </div>
+            )}
+            
+            {/* Time Filter Buttons */}
+            <div className="flex items-center gap-2 bg-white dark:bg-gray-800 p-1 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+               <Filter className="h-4 w-4 text-gray-500 dark:text-gray-400 ml-1" />
+               {(["hour", "day", "month", "year"] as TimeFormat[]).map((format) => (
+                <Button
+                  key={format}
+                  variant={timeFormat === format ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setTimeFormat(format)}
+                  className={cn("capitalize min-w-[55px] transition-all duration-200", {
+                    "text-primary font-semibold": timeFormat === format
+                  })}
+                  disabled={data.loading || data.customersLoading}
+                >
+                  {format === "hour" && "Giờ"}
+                  {format === "day" && "Ngày"}
+                  {format === "month" && "Tháng"}
+                  {format === "year" && "Năm"}
+                </Button>
+              ))}
+            </div>
+
+            {/* Logout Button */}
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleLogout}
+              className="flex items-center gap-2 hover:bg-red-50 dark:hover:bg-red-950/20 hover:text-red-600 dark:hover:text-red-400 hover:border-red-300 transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">Đăng xuất</span>
+            </Button>
           </div>
         </header>
 
@@ -288,7 +405,6 @@ export default function Dashboard() {
            <h2 id="metrics-title" className="sr-only">Chỉ số hiệu suất</h2>
            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
              {metricsConfig.map((metric) => (
-                // Key được đặt ở đây
                <MetricCard key={metric.title + metric.unit} {...metric} />
              ))}
            </div>
@@ -303,7 +419,7 @@ export default function Dashboard() {
             <CustomerList
                customers={data.customers}
                loading={data.customersLoading}
-               error={null} // Lỗi đã được xử lý ở Alert bên trên
+               error={null}
             />
          </section>
       </div>

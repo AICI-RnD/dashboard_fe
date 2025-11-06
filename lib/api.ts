@@ -13,12 +13,26 @@ import type {
   ChatMessage,
   Session,
 } from "./types"
+import { getToken } from '@/lib/auth'
 
 // Set your API base URL here
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001"
 const DASHBOARD_API_ENDPOINT = `${API_BASE_URL}/main-dashboard`
 const CUSTOMER_API_ENDPOINT = `${API_BASE_URL}/customer`
 const SESSION_API_ENDPOINT = `${API_BASE_URL}/session`
+
+function getAuthHeaders(): HeadersInit {
+  const token = getToken()
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  }
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  
+  return headers
+}
 
 export async function getCustomerChatHistory(sessionId: string | number): Promise<ChatMessage[]> {
   // Đảm bảo URL đúng dựa trên router backend
@@ -27,6 +41,7 @@ export async function getCustomerChatHistory(sessionId: string | number): Promis
     console.log(`[v0] Fetching chat history for session ${sessionId}: ${url}`)
     const response = await fetch(url, {
         headers: {
+          ...getAuthHeaders(),
           "ngrok-skip-browser-warning": "true",
           "Accept": "application/json"
         }
@@ -83,6 +98,7 @@ async function fetchAPI<T>(
     console.log("[v0] Fetching API:", url.toString(), "with period type:", typeof period, "value:", period);
     const response = await fetch(url.toString(), {
       headers: {
+        ...getAuthHeaders(),
         "ngrok-skip-browser-warning": "true",
         "Accept": "application/json"
       }
