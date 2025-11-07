@@ -14,9 +14,15 @@ interface ResetPasswordResponse {
   message?: string
 }
 
+interface CheckAuthResponse {
+  valid: boolean
+  message?: string
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"
 const LOGIN_API_ENDPOINT = `${API_BASE_URL}/auth/login`
 const RESET_PASS_API_ENDPOINT = `${API_BASE_URL}/auth/reset-password`
+const CHECK_AUTH_API_ENDPOINT = `${API_BASE_URL}/auth/check-token`
 
 export async function login(username: string, password: string): Promise<LoginResponse> {
   try {
@@ -72,7 +78,7 @@ export function logout() {
   }
 }
 
-// Hàm kiểm tra trạng thái đăng nhập
+// Hàm kiểm tra trạng thái đăng nhập (local)
 export function isAuthenticated(): boolean {
   if (typeof window === 'undefined') return false
   return !!localStorage.getItem('auth_token')
@@ -128,6 +134,85 @@ export async function resetPassword(
     return {
       success: false,
       message: 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại.',
+    }
+  }
+}
+
+export async function checkAuthToken(): Promise<boolean> {
+  try {
+    const token = getToken()
+    
+    // Nếu không có token trong localStorage, return false
+    if (!token) {
+      return false
+    }
+
+    const response = await fetch(CHECK_AUTH_API_ENDPOINT, {
+      method: 'GET',
+      headers: {
+        "ngrok-skip-browser-warning": "true",
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    // Trả về true nếu status code là 200, false cho tất cả các trường hợp khác
+    return response.status === 200
+    
+  } catch (error) {
+    console.error('Check auth token error:', error)
+    // Trả về false nếu có lỗi kết nối hoặc exception
+    return false
+  }
+}
+
+
+export async function validateAuthToken(): Promise<CheckAuthResponse> {
+  try {
+    const token = getToken()
+    
+    if (!token) {
+      return {
+        valid: false,
+        message: 'Token không tồn tại',
+      }
+    }
+
+    const response = await fetch(CHECK_AUTH_API_ENDPOINT, {
+      method: 'GET',
+      headers: {
+        "ngrok-skip-browser-warning": "true",
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    if (response.status === 200) {
+      return {
+        valid: true,
+        message: 'Token hợp lệ',
+      }
+    }
+
+    // Thử parse response để lấy message từ backend
+    try {
+      const data = await response.json()
+      return {
+        valid: false,
+        message: data.message || `Token không hợp lệ (Status: ${response.status})`,
+      }
+    } catch {
+      return {
+        valid: false,
+        message: `Token không hợp lệ (Status: ${response.status})`,
+      }
+    }
+    
+  } catch (error) {
+    console.error('Validate auth token error:', error)
+    return {
+      valid: false,
+      message: 'Không thể kết nối đến máy chủ',
     }
   }
 }

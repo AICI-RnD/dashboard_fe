@@ -25,7 +25,7 @@ import {
 } from "@/lib/api"
 import CustomerList from "@/components/customer-list"
 import { cn } from "@/lib/utils"
-import { logout, getCurrentUser, isAuthenticated } from "@/lib/auth"
+import { logout, getCurrentUser, isAuthenticated, checkAuthToken } from "@/lib/auth"
 import { useRouter } from "next/navigation"
 
 type TimeFormat = "hour" | "day" | "month" | "year"
@@ -118,6 +118,7 @@ interface DashboardState extends DashboardData {
 export default function Dashboard() {
   const router = useRouter()
   const [sessionExpired, setSessionExpired] = useState(false)
+  const [isValidatingToken, setIsValidatingToken] = useState(true)
   const [timeFormat, setTimeFormat] = useState<TimeFormat>("day")
   const [user, setUser] = useState<any>(null)
   const [data, setData] = useState<DashboardState>({
@@ -144,45 +145,37 @@ export default function Dashboard() {
     }
   })
 
-  // Check authentication - only on initial mount
+  // Check authentication and validate token on mount
   useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push('/login')
-      return
+    const validateAuth = async () => {
+      // First check if token exists locally
+      if (!isAuthenticated()) {
+        router.push('/login')
+        return
+      }
+
+      // Then validate token with backend
+      const isValid = await checkAuthToken()
+      
+      if (!isValid) {
+        setSessionExpired(true)
+        setIsValidatingToken(false)
+        return
+      }
+
+      // Token is valid, get user info and allow access
+      const currentUser = getCurrentUser()
+      setUser(currentUser)
+      setIsValidatingToken(false)
     }
-    const currentUser = getCurrentUser()
-    setUser(currentUser)
+
+    validateAuth()
   }, [router])
-
-  // Prevent redirect when session expires during use
-  useEffect(() => {
-    if (sessionExpired) {
-      // Don't auto-redirect, show the warning screen
-      return
-    }
-  }, [sessionExpired])
-
-  // Helper function to check for 401 errors
-  const handleApiError = (error: any, errorType: string) => {
-    console.error(`Failed to fetch ${errorType}:`, error)
-    
-    // Check for 401 status code in various error formats
-    const is401 = error?.response?.status === 401 || 
-                  error?.status === 401 || 
-                  error?.statusCode === 401 ||
-                  (error?.message && error.message.includes('401'))
-    
-    if (is401) {
-      // Set session expired but DON'T call logout() to prevent immediate redirect
-      setSessionExpired(true)
-    }
-    
-    return error instanceof Error ? error.message : `Failed to load ${errorType}`
-  }
 
   // --- Data Fetching Effect ---
   useEffect(() => {
-    if (sessionExpired) return;
+    // Don't fetch data if session expired or still validating
+    if (sessionExpired || isValidatingToken) return;
 
     // Reset loading states
     setData((prev) => ({
@@ -231,9 +224,10 @@ export default function Dashboard() {
               }
             }));
           } catch (error: any) {
+            console.error(`Failed to fetch ${key}:`, error)
             if (!hasError) {
               hasError = true;
-              const errorMessage = handleApiError(error, "dashboard metrics");
+              const errorMessage = error instanceof Error ? error.message : "Failed to load metrics";
               setData(prev => ({ ...prev, error: errorMessage }));
             }
             // Mark this metric as loaded even on error
@@ -265,7 +259,8 @@ export default function Dashboard() {
           customersError: null 
         }));
       } catch (error: any) {
-        const errorMessage = handleApiError(error, "customers");
+        console.error('Failed to fetch customers:', error)
+        const errorMessage = error instanceof Error ? error.message : "Failed to load customers";
         setData(prev => ({
           ...prev, 
           customers: [],
@@ -278,7 +273,7 @@ export default function Dashboard() {
     // Execute both fetching functions in parallel
     fetchMetrics();
     fetchCustomers();
-  }, [timeFormat, sessionExpired]);
+  }, [timeFormat, sessionExpired, isValidatingToken]);
 
   // --- Helper Functions ---
   const formatTimeUnit = (unit: number): string => {
@@ -305,7 +300,6 @@ export default function Dashboard() {
 
   // Handle re-login from session expired screen
   const handleReLogin = () => {
-    setSessionExpired(false)
     router.push('/login')
   }
 
@@ -384,6 +378,20 @@ export default function Dashboard() {
       loading: false 
     },
   ];
+
+  // Show loading screen while validating token
+  if (isValidatingToken) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50 dark:from-gray-900 dark:to-indigo-950">
+        <Card className="p-8 max-w-md w-full text-center shadow-lg">
+          <div className="flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            <p className="text-lg font-medium text-muted-foreground">Đang xác thực phiên đăng nhập...</p>
+          </div>
+        </Card>
+      </div>
+    )
+  }
 
   // Session Expired Screen
   if (sessionExpired) {
