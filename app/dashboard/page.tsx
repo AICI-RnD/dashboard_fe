@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import {
   Clock, MessageSquare, ShoppingCart, Users, Zap, TrendingUp, RotateCcw, LayoutDashboard, AlertCircle, BarChart3, Filter, LogOut
 } from "lucide-react"
-import dynamic from 'next/dynamic'
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -103,6 +102,16 @@ interface DashboardState extends DashboardData {
   customers: Customer[]
   customersLoading: boolean
   customersError: string | null
+  // Individual loading states for each metric
+  loadingStates: {
+    automationRate: boolean
+    customerResponseTime: boolean
+    agentResponseTime: boolean
+    orderCompletionTime: boolean
+    newOrders: boolean
+    returningCustomers: boolean
+    newCustomers: boolean
+  }
 }
 
 // === Main Dashboard Component ===
@@ -124,6 +133,15 @@ export default function Dashboard() {
     customers: [], 
     customersLoading: true, 
     customersError: null,
+    loadingStates: {
+      automationRate: true,
+      customerResponseTime: true,
+      agentResponseTime: true,
+      orderCompletionTime: true,
+      newOrders: true,
+      returningCustomers: true,
+      newCustomers: true,
+    }
   })
 
   // Check authentication - only on initial mount
@@ -164,84 +182,103 @@ export default function Dashboard() {
 
   // --- Data Fetching Effect ---
   useEffect(() => {
-    const fetchAllData = async () => {
-      setData((prev) => ({
-        ...prev, loading: true, error: null,
-        customers: [], customersLoading: true, customersError: null
-      }));
+    if (sessionExpired) return;
 
-      const metricsPromises = [
-        getAvgAutomationRate(timeFormat as Period), 
-        getCustomerAvgResponseTime(timeFormat as Period),
-        getAgentAvgResponseTime(timeFormat as Period), 
-        getAppointmentAvgCompletionTime(timeFormat as Period),
-        getNewAppointments(timeFormat as Period), 
-        getReturningCustomers(timeFormat as Period),
-        getNewCustomers(timeFormat as Period),
+    // Reset loading states
+    setData((prev) => ({
+      ...prev, 
+      loading: true, 
+      error: null,
+      customersLoading: true, 
+      customersError: null,
+      loadingStates: {
+        automationRate: true,
+        customerResponseTime: true,
+        agentResponseTime: true,
+        orderCompletionTime: true,
+        newOrders: true,
+        returningCustomers: true,
+        newCustomers: true,
+      }
+    }));
+
+    // Fetch metrics - each promise updates state independently
+    const fetchMetrics = async () => {
+      const metrics = [
+        { fn: getAvgAutomationRate(timeFormat as Period), key: 'automationRate' as const },
+        { fn: getCustomerAvgResponseTime(timeFormat as Period), key: 'customerResponseTime' as const },
+        { fn: getAgentAvgResponseTime(timeFormat as Period), key: 'agentResponseTime' as const },
+        { fn: getAppointmentAvgCompletionTime(timeFormat as Period), key: 'orderCompletionTime' as const },
+        { fn: getNewAppointments(timeFormat as Period), key: 'newOrders' as const },
+        { fn: getReturningCustomers(timeFormat as Period), key: 'returningCustomers' as const },
+        { fn: getNewCustomers(timeFormat as Period), key: 'newCustomers' as const },
       ];
-      const customersPromise = getAllCustomers();
 
+      let completedCount = 0;
+      let hasError = false;
+
+      // Execute all metrics requests in parallel
+      await Promise.all(
+        metrics.map(async ({ fn, key }) => {
+          try {
+            const value = await fn;
+            setData(prev => ({ 
+              ...prev, 
+              [key]: value,
+              loadingStates: {
+                ...prev.loadingStates,
+                [key]: false
+              }
+            }));
+          } catch (error: any) {
+            if (!hasError) {
+              hasError = true;
+              const errorMessage = handleApiError(error, "dashboard metrics");
+              setData(prev => ({ ...prev, error: errorMessage }));
+            }
+            // Mark this metric as loaded even on error
+            setData(prev => ({
+              ...prev,
+              loadingStates: {
+                ...prev.loadingStates,
+                [key]: false
+              }
+            }));
+          } finally {
+            completedCount++;
+            if (completedCount === metrics.length) {
+              setData(prev => ({ ...prev, loading: false }));
+            }
+          }
+        })
+      );
+    };
+
+    // Fetch customers independently
+    const fetchCustomers = async () => {
       try {
-        const [
-          automationRate, 
-          customerResponseTime, 
-          agentResponseTime, 
-          orderCompletionTime,
-          newOrders, 
-          returningCustomers, 
-          newCustomers,
-        ] = await Promise.all(metricsPromises);
-
+        const customers = await getAllCustomers();
+        setData(prev => ({ 
+          ...prev, 
+          customers, 
+          customersLoading: false, 
+          customersError: null 
+        }));
+      } catch (error: any) {
+        const errorMessage = handleApiError(error, "customers");
         setData(prev => ({
           ...prev, 
-          automationRate, 
-          customerResponseTime, 
-          agentResponseTime, 
-          orderCompletionTime,
-          newOrders, 
-          returningCustomers, 
-          newCustomers, 
-          loading: false, 
-          error: null, 
-        }));
-        
-      } catch (metricsError: any) {
-        const errorMessage = handleApiError(metricsError, "dashboard metrics")
-        
-        setData(prev => ({
-          ...prev, 
-          loading: false,
-          error: errorMessage,
+          customers: [],
+          customersLoading: false,
+          customersError: errorMessage
         }));
       }
+    };
 
-      // Only fetch customers if session hasn't expired
-      if (!sessionExpired) {
-        try {
-          const customers = await customersPromise;
-          setData(prev => ({ 
-            ...prev, 
-            customers, 
-            customersLoading: false, 
-            customersError: null 
-          }));
-
-        } catch (customerError: any) {
-          const errorMessage = handleApiError(customerError, "customers")
-          
-          setData(prev => ({
-            ...prev, 
-            customersLoading: false,
-            customersError: errorMessage
-          }));
-        }
-      }
-    }
-    
-    if (!sessionExpired) {
-      fetchAllData()
-    }
-  }, [timeFormat, sessionExpired])
+    // Execute both fetching functions in parallel
+    fetchMetrics();
+    fetchCustomers();
+  }, [timeFormat, sessionExpired]);
 
   // --- Helper Functions ---
   const formatTimeUnit = (unit: number): string => {
@@ -274,14 +311,78 @@ export default function Dashboard() {
 
   // --- Metrics Configuration ---
   const metricsConfig: MetricDisplayProps[] = [
-    { title: `Tỉ lệ tự động (${getTimeUnitLabel()})`, value: formatPercentage(data.automationRate), unit: "%", icon: <RotateCcw />, tooltipText: "Tỉ lệ phần trăm các phản hồi được xử lý tự động bởi bot.", colorClass: "bg-indigo-50 dark:bg-indigo-950/50", loading: data.loading },
-    { title: `Đơn đặt lịch mới (${getTimeUnitLabel()})`, value: formatCount(data.newOrders), unit: "đơn", icon: <ShoppingCart />, tooltipText: "Tổng số đơn hàng mới được tạo trong khoảng thời gian đã chọn.", colorClass: "bg-orange-50 dark:bg-orange-950/50", loading: data.loading },
-    { title: `TG TB Khách P.Hồi (${getTimeUnitLabel()})`, value: formatTimeUnit(data.customerResponseTime), unit: "giây", icon: <MessageSquare />, tooltipText: "Thời gian trung bình khách hàng phản hồi lại tin nhắn.", colorClass: "bg-blue-50 dark:bg-blue-950/50", loading: data.loading },
-    { title: `TG TB Agent P.Hồi (${getTimeUnitLabel()})`, value: formatTimeUnit(data.agentResponseTime), unit: "giây", icon: <Zap />, tooltipText: "Thời gian trung bình agent tham gia hoặc phản hồi trong cuộc trò chuyện.", colorClass: "bg-green-50 dark:bg-green-950/50", loading: data.loading },
-    { title: `TG TB Hoàn thành đơn (${getTimeUnitLabel()})`, value: formatTimeUnit(data.orderCompletionTime), unit: "giây", icon: <Clock />, tooltipText: "Thời gian trung bình từ khi bắt đầu phiên chat đến khi đơn hàng được tạo.", colorClass: "bg-purple-50 dark:bg-purple-950/50", loading: data.loading },
-    { title: `Khách quay lại (${getTimeUnitLabel()})`, value: formatCount(data.returningCustomers), unit: "khách", icon: <TrendingUp />, tooltipText: "Số lượng khách hàng đã tương tác trước đây quay lại trong kỳ.", colorClass: "bg-pink-50 dark:bg-pink-950/50", loading: data.loading },
-    { title: `Khách hàng mới (${getTimeUnitLabel()})`, value: formatCount(data.newCustomers), unit: "khách", icon: <Users />, tooltipText: "Số lượng khách hàng tương tác lần đầu trong kỳ.", colorClass: "bg-cyan-50 dark:bg-cyan-950/50", loading: data.loading },
-    { title: `Trống (${getTimeUnitLabel()})`, value: "-", unit: "%", icon: <BarChart3 />, tooltipText: "Tỷ lệ khách hàng tạo đơn hàng trên tổng số khách tương tác (dữ liệu ví dụ).", colorClass: "bg-teal-50 dark:bg-teal-950/50", loading: data.loading },
+    { 
+      title: `Tỉ lệ tự động (${getTimeUnitLabel()})`, 
+      value: formatPercentage(data.automationRate), 
+      unit: "%", 
+      icon: <RotateCcw />, 
+      tooltipText: "Tỉ lệ phần trăm các phản hồi được xử lý tự động bởi bot.", 
+      colorClass: "bg-indigo-50 dark:bg-indigo-950/50", 
+      loading: data.loadingStates.automationRate 
+    },
+    { 
+      title: `Đơn đặt lịch mới (${getTimeUnitLabel()})`, 
+      value: formatCount(data.newOrders), 
+      unit: "đơn", 
+      icon: <ShoppingCart />, 
+      tooltipText: "Tổng số đơn hàng mới được tạo trong khoảng thời gian đã chọn.", 
+      colorClass: "bg-orange-50 dark:bg-orange-950/50", 
+      loading: data.loadingStates.newOrders 
+    },
+    { 
+      title: `TG TB Khách P.Hồi (${getTimeUnitLabel()})`, 
+      value: formatTimeUnit(data.customerResponseTime), 
+      unit: "giây", 
+      icon: <MessageSquare />, 
+      tooltipText: "Thời gian trung bình khách hàng phản hồi lại tin nhắn.", 
+      colorClass: "bg-blue-50 dark:bg-blue-950/50", 
+      loading: data.loadingStates.customerResponseTime 
+    },
+    { 
+      title: `TG TB Agent P.Hồi (${getTimeUnitLabel()})`, 
+      value: formatTimeUnit(data.agentResponseTime), 
+      unit: "giây", 
+      icon: <Zap />, 
+      tooltipText: "Thời gian trung bình agent tham gia hoặc phản hồi trong cuộc trò chuyện.", 
+      colorClass: "bg-green-50 dark:bg-green-950/50", 
+      loading: data.loadingStates.agentResponseTime 
+    },
+    { 
+      title: `TG TB Hoàn thành đơn (${getTimeUnitLabel()})`, 
+      value: formatTimeUnit(data.orderCompletionTime), 
+      unit: "giây", 
+      icon: <Clock />, 
+      tooltipText: "Thời gian trung bình từ khi bắt đầu phiên chat đến khi đơn hàng được tạo.", 
+      colorClass: "bg-purple-50 dark:bg-purple-950/50", 
+      loading: data.loadingStates.orderCompletionTime 
+    },
+    { 
+      title: `Khách quay lại (${getTimeUnitLabel()})`, 
+      value: formatCount(data.returningCustomers), 
+      unit: "khách", 
+      icon: <TrendingUp />, 
+      tooltipText: "Số lượng khách hàng đã tương tác trước đây quay lại trong kỳ.", 
+      colorClass: "bg-pink-50 dark:bg-pink-950/50", 
+      loading: data.loadingStates.returningCustomers 
+    },
+    { 
+      title: `Khách hàng mới (${getTimeUnitLabel()})`, 
+      value: formatCount(data.newCustomers), 
+      unit: "khách", 
+      icon: <Users />, 
+      tooltipText: "Số lượng khách hàng tương tác lần đầu trong kỳ.", 
+      colorClass: "bg-cyan-50 dark:bg-cyan-950/50", 
+      loading: data.loadingStates.newCustomers 
+    },
+    { 
+      title: `Trống (${getTimeUnitLabel()})`, 
+      value: "-", 
+      unit: "%", 
+      icon: <BarChart3 />, 
+      tooltipText: "Tỷ lệ khách hàng tạo đơn hàng trên tổng số khách tương tác (dữ liệu ví dụ).", 
+      colorClass: "bg-teal-50 dark:bg-teal-950/50", 
+      loading: false 
+    },
   ];
 
   // Session Expired Screen
