@@ -103,3 +103,70 @@ export interface ChatHistoryResponse {
   session_id: string; 
   chat_histories: ChatMessage[];
 }
+
+export interface ProductAttribute {
+  name: string;
+  value: string;
+}
+
+export interface VariantOption {
+  name: string;
+  values: string[];
+}
+
+export interface ProductVariant {
+  id?: number; // Optional vì khi tạo mới chưa có ID
+  name: string;
+  sku: string;
+  price: number;
+  sale_price?: number;
+  stock: number;
+  image?: string;
+  attributes?: Record<string, string>;
+}
+
+export interface Product {
+  id?: number; // Optional khi tạo mới
+  name: string;
+  brand?: string;
+  short_description?: string;
+  description?: string;
+  has_variants: boolean;
+  base_price?: number;
+  thumbnail?: string; // Dùng cho list
+  images?: string[];  // Dùng cho detail
+  
+  // Cấu hình động
+  general_attributes?: ProductAttribute[];
+  variant_options?: VariantOption[];
+  variants?: ProductVariant[];
+  
+  variants_count?: number;
+  created_at?: string;
+}
+
+export interface ProductListResponse {
+  data: Product[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+  };
+}
+
+export interface UploadResponse {
+  url: string;
+}
+
+export interface ProductAttribute {
+  id?: string; // Dùng cho key render ở FE
+  name: string;
+  value: string;
+}
+
+export interface VariantOption {
+  id?: string; // Dùng cho key render ở FE
+  name: string;
+  values: string[];
+}
+

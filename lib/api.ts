@@ -11,27 +11,67 @@ import type {
   CustomerAutomationRateResponse,
   ChatHistoryResponse,
   ChatMessage,
-  Session,
+  Session, 
+  ProductListResponse, 
+  UploadResponse
 } from "./types"
 import { getToken } from '@/lib/auth'
+import { Product } from "@/lib/types"
 
 // Set your API base URL here
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001"
 const DASHBOARD_API_ENDPOINT = `${API_BASE_URL}/main-dashboard`
 const CUSTOMER_API_ENDPOINT = `${API_BASE_URL}/customer`
 const SESSION_API_ENDPOINT = `${API_BASE_URL}/session`
+const API_PRODUCT_BASE_URL = process.env.NEXT_PUBLIC_API_PRODUCT_BASE_URL || "http://localhost:3030"
+const PRODUCT_API_ENDPOINT = `${API_PRODUCT_BASE_URL}/api/products`
+const UPLOAD_API_ENDPOINT = `${API_PRODUCT_BASE_URL}/api/upload`
 
-function getAuthHeaders(): HeadersInit {
-  const token = getToken()
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  }
+function getAuthHeaders(isMultipart = false): HeadersInit {
+  const token = getToken();
+  const headers: any = {}; // Dùng any để linh hoạt gán key
   
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`
+    headers['Authorization'] = `Bearer ${token}`;
   }
   
-  return headers
+  // Nếu không phải upload file (multipart), thì thêm Content-Type json
+  if (!isMultipart) {
+    headers['Content-Type'] = 'application/json';
+  }
+  
+  return headers;
+}
+
+export async function uploadImage(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(UPLOAD_API_ENDPOINT, {
+    method: 'POST',
+    headers: getAuthHeaders(true), // True để không set Content-Type json
+    body: formData,
+  });
+
+  if (!response.ok) throw new Error('Upload failed');
+  
+  const data: UploadResponse = await response.json();
+  return data.url;
+}
+
+export async function getProducts(page = 1, limit = 10, q = ""): Promise<ProductListResponse> {
+  const params = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+    q: q
+  });
+
+  const response = await fetch(`${PRODUCT_API_ENDPOINT}?${params}`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) throw new Error('Fetch products failed');
+  return response.json();
 }
 
 export async function getCustomerChatHistory(sessionId: string | number): Promise<ChatMessage[]> {
@@ -232,4 +272,52 @@ export async function getCustomerAvgAutomationRate(customerId: number, period: P
   const data = await fetchAPI<CustomerAutomationRateResponse>("customer", endpoint, period);
   // Convert 0-1 to percentage
   return (data.avg_automation_rate || 0) * 100;
+}
+
+
+
+export async function getProductById(id: number | string): Promise<Product> {
+  const response = await fetch(`${PRODUCT_API_ENDPOINT}/${id}`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) throw new Error('Fetch product detail failed');
+  return response.json();
+}
+
+
+export async function createProduct(product: Product): Promise<Product> {
+  const response = await fetch(PRODUCT_API_ENDPOINT, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(product),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Create product failed');
+  }
+  return response.json();
+}
+
+// 5. Cập nhật sản phẩm
+export async function updateProduct(id: number | string, product: Product): Promise<Product> {
+  const response = await fetch(`${PRODUCT_API_ENDPOINT}/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(product),
+  });
+
+  if (!response.ok) throw new Error('Update product failed');
+  return response.json();
+}
+
+// 6. Xóa sản phẩm
+export async function deleteProduct(id: number | string): Promise<boolean> {
+  const response = await fetch(`${PRODUCT_API_ENDPOINT}/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+
+  return response.ok;
 }

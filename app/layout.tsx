@@ -1,15 +1,14 @@
+// app/layout.tsx
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
+// import font nếu có, ví dụ: import { Inter } from 'next/font/google'
 import './globals.css'
+import { Toaster } from "@/components/ui/toaster" // Nếu bạn dùng Toaster
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
+// const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'AI Assistant for Sales Chatbot Dashboard',
-  description: 'Created with v0',
-  generator: 'v0.app',
+  title: 'AnVie Spa Dashboard',
+  description: 'Sales Chatbot Dashboard',
 }
 
 export default function RootLayout({
@@ -19,9 +18,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`font-sans antialiased`}>
+      <body className="font-sans antialiased">
+        {/* Đây là nơi ứng dụng được render */}
         {children}
-        <Analytics />
+        <Toaster />
       </body>
     </html>
   )
