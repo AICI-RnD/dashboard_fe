@@ -255,6 +255,7 @@ export async function getAllProducts(searchQuery = ""): Promise<ProductListRespo
   });
 
   const res = await fetch(`${PRODUCT_API_ENDPOINT}/get-products?${params}`, {
+    method: 'GET',
     headers: getAuthHeaders(),
   });
 
@@ -281,6 +282,7 @@ export async function getAllProducts(searchQuery = ""): Promise<ProductListRespo
     // Push promise vào mảng (chưa await ngay để chạy song song)
     remainingRequests.push(
       fetch(`${PRODUCT_API_ENDPOINT}/get-products?${p}`, { 
+        method: 'GET',
         headers: getAuthHeaders() 
       }).then(r => {
         if (!r.ok) throw new Error(`Failed to fetch page ${page}`);
