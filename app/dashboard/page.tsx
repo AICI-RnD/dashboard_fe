@@ -448,7 +448,7 @@ export default function Dashboard() {
               </h1>
             </div>
             <p className="text-gray-500 dark:text-gray-400">
-              Tổng quan hiệu suất hệ thống AnVie Spa ({getTimeUnitLabel()}).
+              Tổng quan hiệu suất hệ thống Sales Agent ({getTimeUnitLabel()}).
             </p>
           </div>
           
