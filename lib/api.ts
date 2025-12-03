@@ -25,7 +25,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3
 const DASHBOARD_API_ENDPOINT = `${API_BASE_URL}/api/v1/dashboard/api/v1/main-dashboard`
 const CUSTOMER_API_ENDPOINT = `${API_BASE_URL}/api/v1/dashboard/api/v1/customer`
 const SESSION_API_ENDPOINT = `${API_BASE_URL}/api/v1/dashboard/api/v1/session`
-const API_PRODUCT_BASE_URL = `${API_BASE_URL}/api/v1/crud/api/v1/products` // http://localhost:3030/api/v1/products
+const PRODUCT_API_ENDPOINT = `${API_BASE_URL}/api/v1/crud/api/v1/products` // http://localhost:3030/api/v1/products
 
 function getAuthHeaders(isMultipart = false): HeadersInit {
   const token = getToken();
@@ -254,7 +254,7 @@ export async function getAllProducts(searchQuery = ""): Promise<ProductListRespo
     search_query: searchQuery
   });
 
-  const res = await fetch(`${API_PRODUCT_BASE_URL}/get-products?${params}`, {
+  const res = await fetch(`${PRODUCT_API_ENDPOINT}/get-products?${params}`, {
     headers: getAuthHeaders(),
   });
 
@@ -280,7 +280,7 @@ export async function getAllProducts(searchQuery = ""): Promise<ProductListRespo
     
     // Push promise vào mảng (chưa await ngay để chạy song song)
     remainingRequests.push(
-      fetch(`${API_PRODUCT_BASE_URL}/get-products?${p}`, { 
+      fetch(`${PRODUCT_API_ENDPOINT}/get-products?${p}`, { 
         headers: getAuthHeaders() 
       }).then(r => {
         if (!r.ok) throw new Error(`Failed to fetch page ${page}`);
@@ -311,7 +311,7 @@ export async function getAllProducts(searchQuery = ""): Promise<ProductListRespo
 
 // 2. Get Product Detail
 export async function getProductDetail(id: number | string): Promise<ProductDetailResponse> {
-  const res = await fetch(`${API_PRODUCT_BASE_URL}/get-product-detail/${id}`, {
+  const res = await fetch(`${PRODUCT_API_ENDPOINT}/get-product-detail/${id}`, {
     headers: getAuthHeaders(),
   });
 
@@ -321,7 +321,7 @@ export async function getProductDetail(id: number | string): Promise<ProductDeta
 
 // 3. Process Product (Create/Update/Delete/Keep)
 export async function processProduct(payload: ProcessProductPayload) {
-  const res = await fetch(`${API_PRODUCT_BASE_URL}/process-product`, {
+  const res = await fetch(`${PRODUCT_API_ENDPOINT}/process-product`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(payload),
