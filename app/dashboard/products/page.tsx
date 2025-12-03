@@ -3,22 +3,15 @@
 import React, { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Edit, Trash, Eye, Plus, Search } from "lucide-react"
+import { Edit, Trash, Plus, Search, Eye } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { getProducts, deleteProduct } from "@/lib/api"
-import { Product } from "@/lib/types"
+import { getAllProducts, processProduct } from "@/lib/api"
+import { ProductListResponse, ProcessProductPayload, ActionType } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -34,76 +27,95 @@ import {
 export default function ProductListPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const [products, setProducts] = useState<Product[]>([])
+  
+  // State lưu danh sách sản phẩm (cấu trúc nested từ BE)
+  const [products, setProducts] = useState<ProductListResponse['data']>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [deleteId, setDeleteId] = useState<string | number | null>(null)
+  const [deleteId, setDeleteId] = useState<number | null>(null)
 
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  const ITEMS_PER_PAGE = 50 // Số lượng sản phẩm mỗi trang
+  const ITEMS_PER_PAGE = 10 
 
   // Fetch Data
-  useEffect(() => {
-    const fetch = async () => {
-      setLoading(true)
-      try {
-        // Gọi API với tham số page và limit
-        const response = await getProducts(currentPage, ITEMS_PER_PAGE, searchTerm)
-        
-        if (response && Array.isArray(response.data)) {
-            setProducts(response.data)
-            
-            // Tính toán tổng số trang dựa trên total items trả về từ API
-            // Giả sử response.pagination.total là tổng số item
-            const totalItems = response.pagination?.total || 0
-            setTotalPages(Math.ceil(totalItems / ITEMS_PER_PAGE) || 1)
-        } else {
-            setProducts([])
-            setTotalPages(1)
-        }
-      } catch (error) {
-        console.error("Failed to fetch products:", error)
-        setProducts([])
-      } finally {
-        setLoading(false)
+  const fetchData = async () => {
+    setLoading(true)
+    try {
+      const response = await getAllProducts(searchTerm);
+      
+      if (response && Array.isArray(response.data)) {
+          setProducts(response.data)
+          const totalItems = response.pagination?.total || 0
+          setTotalPages(Math.ceil(totalItems / ITEMS_PER_PAGE) || 1)
+      } else {
+          setProducts([])
+          setTotalPages(1)
       }
+    } catch (error) {
+      console.error("Failed to fetch products:", error)
+      setProducts([])
+    } finally {
+      setLoading(false)
     }
+  }
 
-    // Debounce simple
+  useEffect(() => {
     const timer = setTimeout(() => {
-        fetch()
+        fetchData()
     }, 300)
     return () => clearTimeout(timer)
-  }, [searchTerm, currentPage]) // Chạy lại khi search hoặc đổi trang
+  }, [searchTerm, currentPage]) 
 
-  // Reset về trang 1 khi tìm kiếm thay đổi
   useEffect(() => {
     setCurrentPage(1)
   }, [searchTerm])
 
+  // --- LOGIC XÓA ---
   const handleDelete = async () => {
     if (!deleteId) return
+    
+    const itemToDelete = products.find(item => item.product.id === deleteId);
+    
+    if (!itemToDelete) {
+        toast({ title: "Lỗi", description: "Không tìm thấy dữ liệu sản phẩm", variant: "destructive" })
+        return;
+    }
+
     try {
-        await deleteProduct(deleteId)
-        // Refresh lại list sau khi xóa
-        const response = await getProducts(currentPage, ITEMS_PER_PAGE, searchTerm)
-        if (response && Array.isArray(response.data)) {
-            setProducts(response.data)
-        }
-        toast({ title: "Đã xóa sản phẩm" })
-    } catch (error) {
-        toast({ title: "Xóa thất bại", variant: "destructive" })
+        const payload: ProcessProductPayload = {
+            product: { 
+                ...itemToDelete.product, 
+                action: 'delete' 
+            },
+            product_images: itemToDelete.product_images.map(img => ({
+                ...img,
+                action: 'delete' as ActionType
+            })),
+            product_variances_1: itemToDelete.product_variances_1.map(v => ({
+                ...v,
+                action: 'delete' as ActionType,
+                prices: (v.prices || []).map(p => ({ ...p, action: 'delete' as ActionType }))
+            }))
+        };
+
+        await processProduct(payload);
+        
+        toast({ title: "Thành công", description: "Đã xóa sản phẩm", className: "bg-green-600 text-white" })
+        fetchData(); 
+
+    } catch (error: any) {
+        console.error(error);
+        toast({ title: "Xóa thất bại", description: error.message, variant: "destructive" })
     } finally {
         setDeleteId(null)
     }
   }
 
-  // Helper function để tạo danh sách trang hiển thị (VD: 1, 2, 3 ... 10)
+  // Helper Pagination
   const renderPaginationItems = () => {
     const items = []
-    const maxVisiblePages = 5 // Số lượng nút trang tối đa hiển thị
-
+    const maxVisiblePages = 5 
     let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2))
     let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1)
 
@@ -111,46 +123,45 @@ export default function ProductListPage() {
       startPage = Math.max(1, endPage - maxVisiblePages + 1)
     }
 
-    for (let i = startPage; i <= endPage; i++) {
-      items.push(
-        <PaginationItem key={i}>
-          <PaginationLink 
-            href="#" 
-            isActive={i === currentPage}
-            onClick={(e) => {
-              e.preventDefault()
-              setCurrentPage(i)
-            }}
-          >
-            {i}
-          </PaginationLink>
-        </PaginationItem>
-      )
-    }
-    
-    // Thêm dấu ... nếu cần
-    if (startPage > 1) {
-        items.unshift(
-            <PaginationItem key="ellipsis-start">
-                <PaginationEllipsis />
-            </PaginationItem>
-        )
-    }
-    if (endPage < totalPages) {
+    if (currentPage > 1) {
         items.push(
-            <PaginationItem key="ellipsis-end">
-                <PaginationEllipsis />
+            <PaginationItem key="prev">
+                <PaginationPrevious href="#" onClick={(e) => { e.preventDefault(); setCurrentPage(p => p - 1) }} />
             </PaginationItem>
         )
     }
 
+    for (let i = startPage; i <= endPage; i++) {
+      items.push(
+        <PaginationItem key={i}>
+          <PaginationLink href="#" isActive={i === currentPage} onClick={(e) => { e.preventDefault(); setCurrentPage(i) }}>{i}</PaginationLink>
+        </PaginationItem>
+      )
+    }
+    
+    if (endPage < totalPages) {
+        items.push(<PaginationItem key="ellipsis"><PaginationEllipsis /></PaginationItem>)
+    }
+
+    if (currentPage < totalPages) {
+        items.push(
+            <PaginationItem key="next">
+                <PaginationNext href="#" onClick={(e) => { e.preventDefault(); setCurrentPage(p => p + 1) }} />
+            </PaginationItem>
+        )
+    }
     return items
+  }
+
+  // Helper điều hướng chi tiết
+  const navigateToDetail = (id: number | undefined) => {
+    if (id) router.push(`/dashboard/products/${id}`);
   }
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-3xl font-bold">Sản phẩm</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Danh sách sản phẩm</h1>
         <Link href="/dashboard/products/create">
           <Button>
             <Plus className="w-4 h-4 mr-2" /> Thêm sản phẩm
@@ -163,7 +174,7 @@ export default function ProductListPage() {
             <div className="relative w-full max-w-sm">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 
-                    placeholder="Tìm kiếm sản phẩm..." 
+                    placeholder="Tìm theo tên, SKU, brand..." 
                     className="pl-8"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -173,75 +184,107 @@ export default function ProductListPage() {
         <CardContent>
           {loading ? (
              <div className="space-y-2">
-                 {[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+                 {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-12 w-full" />)}
              </div>
           ) : (
-            <Table>
-                <TableHeader>
-                <TableRow>
-                    <TableHead className="w-[80px]">ID</TableHead>
-                    <TableHead>Tên sản phẩm</TableHead>
-                    <TableHead>Thương hiệu</TableHead>
-                    <TableHead>Giá cơ bản</TableHead>
-                    <TableHead>Biến thể</TableHead>
-                    <TableHead className="text-right">Thao tác</TableHead>
-                </TableRow>
-                </TableHeader>
-                <TableBody>
-                {products.length === 0 && <TableRow><TableCell colSpan={6} className="text-center py-8">Không tìm thấy sản phẩm</TableCell></TableRow>}
-                {products.map((product) => (
-                    <TableRow key={product.id}>
-                    <TableCell className="font-medium">{product.id}</TableCell>
-                    <TableCell className="font-medium">{product.name}</TableCell>
-                    <TableCell>{product.brand || "-"}</TableCell>
-                    <TableCell>
-                        {product.has_variants 
-                            ? `${product.variants?.length ?? 0} biến thể` 
-                            : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(product.base_price || 0)}
-                    </TableCell>
-                    <TableCell>
-                        {product.has_variants ? (
-                            <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                                {product.variants?.length ?? 0} variants
-                            </span>
-                        ) : (
-                            <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800 dark:bg-gray-800 dark:text-gray-200">
-                                Đơn thể
-                            </span>
-                        )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => router.push(`/dashboard/products/${product.id}`)}>
-                                <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setDeleteId(product.id ?? null)}>
-                                <Trash className="w-4 h-4" />
-                            </Button>
-                        </div>
-                    </TableCell>
+            <div className="rounded-md border">
+                <Table>
+                    <TableHeader>
+                    <TableRow>
+                        <TableHead className="w-[80px]">ID</TableHead>
+                        <TableHead className="w-[100px]">Ảnh</TableHead>
+                        <TableHead className="w-[150px]">SKU</TableHead>
+                        <TableHead>Tên sản phẩm</TableHead>
+                        <TableHead className="w-[150px]">Thương hiệu</TableHead>
+                        <TableHead className="text-right">Thao tác</TableHead>
                     </TableRow>
-                ))}
-                </TableBody>
-            </Table>
+                    </TableHeader>
+                    <TableBody>
+                    {products.length === 0 && <TableRow><TableCell colSpan={6} className="text-center py-8">Không tìm thấy dữ liệu</TableCell></TableRow>}
+                    
+                    {products.map((item) => {
+                        const { product, product_images } = item;
+                        const mainImage = product_images && product_images.length > 0 ? product_images[0].url : null;
+
+                        return (
+                            <TableRow 
+                                key={product.id} 
+                                className="group cursor-pointer hover:bg-muted/50 transition-colors"
+                                // Double click vào hàng để xem chi tiết
+                                onDoubleClick={() => navigateToDetail(product.id)}
+                            >
+                                <TableCell className="font-medium text-muted-foreground">{product.id}</TableCell>
+                                <TableCell>
+                                    <div className="relative w-12 h-12 rounded-md overflow-hidden border bg-muted">
+                                        {mainImage ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={mainImage} alt={product.name} className="object-cover w-full h-full" />
+                                        ) : (
+                                            <div className="flex items-center justify-center h-full text-xs text-muted-foreground">No img</div>
+                                        )}
+                                    </div>
+                                </TableCell>
+                                <TableCell className="font-mono text-sm">{product.sku || "---"}</TableCell>
+                                <TableCell className="font-medium">
+                                    <div className="line-clamp-2" title={product.name}>{product.name}</div>
+                                </TableCell>
+                                <TableCell>{product.brand || "---"}</TableCell>
+                                <TableCell className="text-right">
+                                    {/* Ngăn chặn sự kiện click lan ra ngoài (stopPropagation) để nút bấm hoạt động riêng biệt với onDoubleClick của hàng */}
+                                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            title="Xem chi tiết"
+                                            onClick={() => navigateToDetail(product.id)}
+                                        >
+                                            <Eye className="w-4 h-4" />
+                                        </Button>
+                                        
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="text-destructive hover:text-destructive hover:bg-destructive/10" 
+                                            onClick={() => setDeleteId(product.id ?? null)}
+                                            title="Xóa"
+                                        >
+                                            <Trash className="w-4 h-4" />
+                                        </Button>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        )
+                    })}
+                    </TableBody>
+                </Table>
+            </div>
+          )}
+          
+          {/* Pagination */}
+          {!loading && products.length > 0 && (
+             <div className="mt-4">
+                <Pagination>
+                    <PaginationContent>
+                        {renderPaginationItems()}
+                    </PaginationContent>
+                </Pagination>
+             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Dialog */}
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Bạn có chắc chắn không?</AlertDialogTitle>
+            <AlertDialogTitle>Xác nhận xóa sản phẩm?</AlertDialogTitle>
             <AlertDialogDescription>
-              Hành động này không thể hoàn tác. Sản phẩm sẽ bị xóa vĩnh viễn khỏi hệ thống.
+              Hành động này sẽ xóa vĩnh viễn sản phẩm (ID: {deleteId}) và toàn bộ hình ảnh, biến thể liên quan.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Xóa
-            </AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Xóa vĩnh viễn</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

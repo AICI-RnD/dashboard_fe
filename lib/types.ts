@@ -104,49 +104,61 @@ export interface ChatHistoryResponse {
   chat_histories: ChatMessage[];
 }
 
-export interface ProductAttribute {
-  name: string;
-  value: string;
-}
+export type ActionType = 'create' | 'update' | 'delete' | 'keep';
 
-export interface VariantOption {
-  name: string;
-  values: string[];
-}
+// Helper type để thêm trường action vào entity
+export type WithAction<T> = T & { action: ActionType };
 
-export interface ProductVariant {
+export interface ProductPrice {
   id?: number; // Optional vì khi tạo mới chưa có ID
-  name: string;
-  sku: string;
   price: number;
-  sale_price?: number;
-  stock: number;
-  image?: string;
-  attributes?: Record<string, string>;
+  discount: number;
+  quantity: number;
+  price_after_discount?: number; // Backend tự tính hoặc FE gửi
+  product_id?: number;
 }
 
-export interface Product {
-  id?: number; // Optional khi tạo mới
+export interface ProductVariance {
+  id?: number;
+  sku: string | null;
+  var_name: string; // Tên biến thể (VD: Màu sắc)
+  value: string;    // Giá trị (VD: Đỏ)
+  product_id?: number;
+  // Quan trọng: Backend lồng prices vào trong variance
+  prices: WithAction<ProductPrice>[]; 
+}
+
+export interface ProductImage {
+  id?: number;
+  url: string;
+  product_id?: number;
+}
+
+export interface ProductCore {
+  id?: number;
+  sku: string | null;
   name: string;
   brand?: string;
-  short_description?: string;
-  description?: string;
-  has_variants: boolean;
-  base_price?: number;
-  thumbnail?: string; // Dùng cho list
-  images?: string[];  // Dùng cho detail
-  
-  // Cấu hình động
-  general_attributes?: ProductAttribute[];
-  variant_options?: VariantOption[];
-  variants?: ProductVariant[];
-  
-  variants_count?: number;
+  brief_des?: any; // JSON object
+  des?: string;
   created_at?: string;
+  url?: string | null;
 }
 
+// Cấu trúc Payload gửi lên cho endpoint /process-product
+export interface ProcessProductPayload {
+  product: WithAction<ProductCore>;
+  product_images: WithAction<ProductImage>[];
+  product_variances_1: WithAction<ProductVariance>[];
+}
+
+// Cấu trúc Response cho endpoint /get-products (List)
 export interface ProductListResponse {
-  data: Product[];
+  data: {
+    product: ProductCore;
+    product_images: ProductImage[];
+    product_variances_1: ProductVariance[];
+  }[];
   pagination: {
     total: number;
     page: number;
@@ -154,19 +166,9 @@ export interface ProductListResponse {
   };
 }
 
-export interface UploadResponse {
-  url: string;
+// Cấu trúc Response cho endpoint /get-product-detail/{id}
+export interface ProductDetailResponse {
+  product: ProductCore;
+  product_images: ProductImage[];
+  product_variances_1: ProductVariance[];
 }
-
-export interface ProductAttribute {
-  id?: string; // Dùng cho key render ở FE
-  name: string;
-  value: string;
-}
-
-export interface VariantOption {
-  id?: string; // Dùng cho key render ở FE
-  name: string;
-  values: string[];
-}
-

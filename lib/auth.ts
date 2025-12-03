@@ -20,9 +20,9 @@ interface CheckAuthResponse {
 }
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"
-const LOGIN_API_ENDPOINT = `${API_BASE_URL}/auth/login`
-const RESET_PASS_API_ENDPOINT = `${API_BASE_URL}/auth/reset-password`
-const CHECK_AUTH_API_ENDPOINT = `${API_BASE_URL}/auth/check-token`
+const LOGIN_API_ENDPOINT = `${API_BASE_URL}/api/v1/auth/login`
+const RESET_PASS_API_ENDPOINT = `${API_BASE_URL}/api/v1/auth/reset-password`
+const CHECK_AUTH_API_ENDPOINT = `${API_BASE_URL}/api/v1/auth/check-token`
 
 export async function login(username: string, password: string): Promise<LoginResponse> {
   try {

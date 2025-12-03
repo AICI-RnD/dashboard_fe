@@ -12,20 +12,20 @@ import type {
   ChatHistoryResponse,
   ChatMessage,
   Session, 
-  ProductListResponse, 
-  UploadResponse
 } from "./types"
 import { getToken } from '@/lib/auth'
-import { Product } from "@/lib/types"
+import { 
+  ProcessProductPayload, 
+  ProductListResponse, 
+  ProductDetailResponse 
+} from "./types";
 
 // Set your API base URL here
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001"
-const DASHBOARD_API_ENDPOINT = `${API_BASE_URL}/main-dashboard`
-const CUSTOMER_API_ENDPOINT = `${API_BASE_URL}/customer`
-const SESSION_API_ENDPOINT = `${API_BASE_URL}/session`
-const API_PRODUCT_BASE_URL = process.env.NEXT_PUBLIC_API_PRODUCT_BASE_URL || "http://localhost:3030"
-const PRODUCT_API_ENDPOINT = `${API_PRODUCT_BASE_URL}/api/products`
-const UPLOAD_API_ENDPOINT = `${API_PRODUCT_BASE_URL}/api/upload`
+const DASHBOARD_API_ENDPOINT = `${API_BASE_URL}/api/v1/dashboard_be/api/v1/main-dashboard`
+const CUSTOMER_API_ENDPOINT = `${API_BASE_URL}/api/v1/dashboard_be/api/v1/customer`
+const SESSION_API_ENDPOINT = `${API_BASE_URL}/api/v1/dashboard_be/api/v1/session`
+const API_PRODUCT_BASE_URL = process.env.NEXT_PUBLIC_API_PRODUCT_BASE_URL; // http://localhost:3030/api/v1/products
 
 function getAuthHeaders(isMultipart = false): HeadersInit {
   const token = getToken();
@@ -41,37 +41,6 @@ function getAuthHeaders(isMultipart = false): HeadersInit {
   }
   
   return headers;
-}
-
-export async function uploadImage(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append('file', file);
-
-  const response = await fetch(UPLOAD_API_ENDPOINT, {
-    method: 'POST',
-    headers: getAuthHeaders(true), // True để không set Content-Type json
-    body: formData,
-  });
-
-  if (!response.ok) throw new Error('Upload failed');
-  
-  const data: UploadResponse = await response.json();
-  return data.url;
-}
-
-export async function getProducts(page = 1, limit = 10, q = ""): Promise<ProductListResponse> {
-  const params = new URLSearchParams({
-    page: page.toString(),
-    limit: limit.toString(),
-    q: q
-  });
-
-  const response = await fetch(`${PRODUCT_API_ENDPOINT}?${params}`, {
-    headers: getAuthHeaders(),
-  });
-
-  if (!response.ok) throw new Error('Fetch products failed');
-  return response.json();
 }
 
 export async function getCustomerChatHistory(sessionId: string | number): Promise<ChatMessage[]> {
@@ -205,7 +174,7 @@ export async function getNewCustomers(period: Period): Promise<number> {
 }
 
 export async function getNewAppointments(period: Period): Promise<number> {
-  const data = await fetchAPI<CountResponse>("dashboard", "/new-appointments", period)
+  const data = await fetchAPI<CountResponse>("dashboard", "/new-orders", period)
   return data.count
 }
 
@@ -215,7 +184,7 @@ export async function getAgentAvgResponseTime(period: Period): Promise<number> {
 }
 
 export async function getAppointmentAvgCompletionTime(period: Period): Promise<number> {
-  const data = await fetchAPI<TimeResponse>("dashboard", "/appointment-avg-completion-time", period)
+  const data = await fetchAPI<TimeResponse>("dashboard", "/order-avg-completion-time", period)
   return data.avg_completion_time || 0
 }
 
@@ -244,13 +213,13 @@ export async function getCustomerSessions(customerId: number): Promise<Session[]
 }
 
 export async function getCustomerAppointmentCompletionsCount(customerId: number): Promise<number> {
-  const endpoint = `/${customerId}/appointment-completions/count`;
+  const endpoint = `/${customerId}/order-completions/count`;
   const data = await fetchAPI<CustomerAppointmentCountResponse>("customer", endpoint);
   return data.appointment_completions;
 }
 
 export async function getCustomerAvgCompletionTime(customerId: number, period: Period): Promise<number> {
-  const endpoint = `/${customerId}/appointment-completion-avg-time`;
+  const endpoint = `/${customerId}/order-completion-avg-time`;
   const data = await fetchAPI<CustomerTimeResponse>("customer", endpoint, period);
   return data.avg_completion_time || 0;
 }
@@ -274,50 +243,94 @@ export async function getCustomerAvgAutomationRate(customerId: number, period: P
   return (data.avg_automation_rate || 0) * 100;
 }
 
+// 1. Get List Products
+export async function getAllProducts(searchQuery = ""): Promise<ProductListResponse> {
+  const LIMIT_PER_REQUEST = 100; // Giới hạn tối đa của Backend
 
+  // Bước 1: Lấy trang đầu tiên để biết tổng số lượng (total)
+  const params = new URLSearchParams({
+    page: "1",
+    limit: LIMIT_PER_REQUEST.toString(),
+    search_query: searchQuery
+  });
 
-export async function getProductById(id: number | string): Promise<Product> {
-  const response = await fetch(`${PRODUCT_API_ENDPOINT}/${id}`, {
+  const res = await fetch(`${API_PRODUCT_BASE_URL}/get-products?${params}`, {
     headers: getAuthHeaders(),
   });
 
-  if (!response.ok) throw new Error('Fetch product detail failed');
-  return response.json();
+  if (!res.ok) throw new Error("Failed to fetch initial products");
+  
+  const firstPageData: ProductListResponse = await res.json();
+  const totalItems = firstPageData.pagination.total;
+  const totalPages = Math.ceil(totalItems / LIMIT_PER_REQUEST);
+
+  // Nếu chỉ có 1 trang thì trả về luôn
+  if (totalPages <= 1) {
+    return firstPageData;
+  }
+
+  // Bước 2: Tạo mảng Promise để gọi song song các trang còn lại
+  const remainingRequests = [];
+  for (let page = 2; page <= totalPages; page++) {
+    const p = new URLSearchParams({
+      page: page.toString(),
+      limit: LIMIT_PER_REQUEST.toString(),
+      search_query: searchQuery
+    });
+    
+    // Push promise vào mảng (chưa await ngay để chạy song song)
+    remainingRequests.push(
+      fetch(`${API_PRODUCT_BASE_URL}/get-products?${p}`, { 
+        headers: getAuthHeaders() 
+      }).then(r => {
+        if (!r.ok) throw new Error(`Failed to fetch page ${page}`);
+        return r.json();
+      })
+    );
+  }
+
+  // Bước 3: Chờ tất cả các trang tải xong
+  const remainingResponses = await Promise.all(remainingRequests) as ProductListResponse[];
+
+  // Bước 4: Gộp dữ liệu (Merge Data)
+  const allData = [
+    ...firstPageData.data,
+    ...remainingResponses.flatMap(res => res.data)
+  ];
+
+  // Trả về cấu trúc đúng chuẩn ProductListResponse nhưng với full data
+  return {
+    data: allData,
+    pagination: {
+      total: totalItems,
+      page: 1,
+      limit: totalItems // Limit lúc này bằng tổng số lượng (vì đã lấy hết)
+    }
+  };
 }
 
+// 2. Get Product Detail
+export async function getProductDetail(id: number | string): Promise<ProductDetailResponse> {
+  const res = await fetch(`${API_PRODUCT_BASE_URL}/get-product-detail/${id}`, {
+    headers: getAuthHeaders(),
+  });
 
-export async function createProduct(product: Product): Promise<Product> {
-  const response = await fetch(PRODUCT_API_ENDPOINT, {
+  if (!res.ok) throw new Error("Failed to fetch product detail");
+  return res.json();
+}
+
+// 3. Process Product (Create/Update/Delete/Keep)
+export async function processProduct(payload: ProcessProductPayload) {
+  const res = await fetch(`${API_PRODUCT_BASE_URL}/process-product`, {
     method: 'POST',
     headers: getAuthHeaders(),
-    body: JSON.stringify(product),
+    body: JSON.stringify(payload),
   });
 
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Create product failed');
+  if (!res.ok) {
+    const errorData = await res.json();
+    throw new Error(errorData.detail || "Failed to process product");
   }
-  return response.json();
-}
-
-// 5. Cập nhật sản phẩm
-export async function updateProduct(id: number | string, product: Product): Promise<Product> {
-  const response = await fetch(`${PRODUCT_API_ENDPOINT}/${id}`, {
-    method: 'PUT',
-    headers: getAuthHeaders(),
-    body: JSON.stringify(product),
-  });
-
-  if (!response.ok) throw new Error('Update product failed');
-  return response.json();
-}
-
-// 6. Xóa sản phẩm
-export async function deleteProduct(id: number | string): Promise<boolean> {
-  const response = await fetch(`${PRODUCT_API_ENDPOINT}/${id}`, {
-    method: 'DELETE',
-    headers: getAuthHeaders(),
-  });
-
-  return response.ok;
+  
+  return res.json();
 }
