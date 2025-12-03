@@ -25,7 +25,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3
 const DASHBOARD_API_ENDPOINT = `${API_BASE_URL}/api/v1/dashboard_test/api/v1/main-dashboard`
 const CUSTOMER_API_ENDPOINT = `${API_BASE_URL}/api/v1/dashboard_test/api/v1/customer`
 const SESSION_API_ENDPOINT = `${API_BASE_URL}/api/v1/dashboard_test/api/v1/session`
-const API_PRODUCT_BASE_URL = process.env.NEXT_PUBLIC_API_PRODUCT_BASE_URL; // http://localhost:3030/api/v1/products
+const API_PRODUCT_BASE_URL = `${API_BASE_URL}/api/v1/crud_test/api/v1/products` // http://localhost:3030/api/v1/products
 
 function getAuthHeaders(isMultipart = false): HeadersInit {
   const token = getToken();
