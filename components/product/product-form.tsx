@@ -492,7 +492,7 @@ export default function ProductForm({ initialData }: ProductFormProps) {
                         {variantOptions.map((opt, idx) => (
                             <div key={opt.id} className="p-4 border rounded relative">
                                 <div className="flex justify-between mb-2">
-                                    <Input value={opt.name} onChange={e => updateVariantOptionName(idx, e.target.value)} className="w-1/2 font-bold" placeholder="Tên nhóm (VD: Màu)" />
+                                    <Input value={opt.name} onChange={e => updateVariantOptionName(idx, e.target.value)} className="w-1/2 font-bold" placeholder="Tên nhóm (VD: Dung tích,... )" />
                                     <Button type="button" variant="ghost" size="sm" onClick={() => removeVariantOption(idx)}><X className="w-4 h-4"/></Button>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
@@ -502,8 +502,8 @@ export default function ProductForm({ initialData }: ProductFormProps) {
                                         </span>
                                     ))}
                                     <Input 
-                                        className="w-32 h-8 text-sm" 
-                                        placeholder="Thêm giá trị..." 
+                                        className="w-82 h-8 text-lg" 
+                                        placeholder="Thêm giá trị... (VD: 50ml (Enter), 150ml (Enter), ...)" 
                                         onKeyDown={e => handleValueInput(e, idx)} 
                                     />
                                 </div>
