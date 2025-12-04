@@ -33,7 +33,7 @@ const API_PRODUCT_BASE_URL = process.env.NEXT_PUBLIC_API_PRODUCT_BASE_URL;
 function getAuthHeaders(isMultipart = false): HeadersInit {
   const token = getToken();
   const headers: any = {
-    "ngrok-skip-browser-warning": "skip-browser-warning",
+    "ngrok-skip-browser-warning": "true",
   };
   
   if (token) {
@@ -187,7 +187,7 @@ export async function getNewCustomers(period: Period): Promise<number> {
   return data.count
 }
 export async function getNewAppointments(period: Period): Promise<number> {
-  const data = await fetchAPI<CountResponse>("dashboard", "/new-appointments", period)
+  const data = await fetchAPI<CountResponse>("dashboard", "/new-orders", period)
   return data.count
 }
 export async function getAgentAvgResponseTime(period: Period): Promise<number> {
@@ -195,7 +195,7 @@ export async function getAgentAvgResponseTime(period: Period): Promise<number> {
   return data.avg_response_time || 0
 }
 export async function getAppointmentAvgCompletionTime(period: Period): Promise<number> {
-  const data = await fetchAPI<TimeResponse>("dashboard", "/appointment-avg-completion-time", period)
+  const data = await fetchAPI<TimeResponse>("dashboard", "/order-avg-completion-time", period)
   return data.avg_completion_time || 0
 }
 export async function getCustomerAvgResponseTime(period: Period): Promise<number> {
@@ -216,12 +216,12 @@ export async function getCustomerSessions(customerId: number): Promise<Session[]
   return data.sessions;
 }
 export async function getCustomerAppointmentCompletionsCount(customerId: number): Promise<number> {
-  const endpoint = `/${customerId}/appointment-completions/count`;
+  const endpoint = `/${customerId}/order-completions/count`;
   const data = await fetchAPI<CustomerAppointmentCountResponse>("customer", endpoint);
   return data.appointment_completions;
 }
 export async function getCustomerAvgCompletionTime(customerId: number, period: Period): Promise<number> {
-  const endpoint = `/${customerId}/appointment-completion-avg-time`;
+  const endpoint = `/${customerId}/order-completion-avg-time`;
   const data = await fetchAPI<CustomerTimeResponse>("customer", endpoint, period);
   return data.avg_completion_time || 0;
 }
